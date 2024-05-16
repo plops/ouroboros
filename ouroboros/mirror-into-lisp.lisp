@@ -1,3 +1,11 @@
+;; FILEPATH: ouroboros/ouroboros/mirror-into-lisp.lisp
+
+;; This file contains code for mirroring Python objects into Lisp objects.
+;; It defines a hash table that maps PyObject addresses to corresponding Lisp objects.
+;; The Lisp objects have finalizers that decrease the reference count of their corresponding PyObjects.
+;; The code also defines classes for Python objects, Python classes, and Python types.
+;; It provides functions for creating Lisp objects corresponding to PyObjects and retrieving their attributes.
+
 (in-package #:ouroboros)
 
 (defparameter *python-object-table*
@@ -101,7 +109,9 @@ at any time if necessary.")
             (make-instance class
               :pyobject pyobject)))))
 
+
 (defun pytype-name-symbol (pytype)
+  "Return the Lisp symbol corresponding to the name of the given PyType object."
   (let ((pyname (pytype-qualified-name pytype)))
     (if (cffi:null-pointer-p pyname)
         (intern
@@ -125,6 +135,7 @@ at any time if necessary.")
             lisp-symbol)))))
 
 (defun pytype-direct-superclasses (pyobject)
+  "Return a list of Lisp objects corresponding to the direct superclasses of the given PyType object."
   (declare (cffi:foreign-pointer pyobject))
   (let ((bases (pyobject-getattr-string pyobject "__bases__")))
     (when (cffi:null-pointer-p bases)
