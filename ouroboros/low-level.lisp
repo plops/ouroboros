@@ -1,6 +1,12 @@
+;; FILEPATH: ouroboros/ouroboros/low-level.lisp
+
+;; This file contains low-level functions and macros for interacting with Python from Common Lisp.
+
 (in-package #:ouroboros)
 
 (defun call-with-python-error-handling (thunk)
+  "Calls the supplied thunk function with Python error handling.
+If an error occurs during the execution of the thunk, it will be caught and handled appropriately."
   (unwind-protect (funcall thunk)
     (pyerr-check-signals)
     (let ((err (pyerr-occurred)))
@@ -8,9 +14,12 @@
         (pyerr-write-unraisable err)))))
 
 (defmacro with-python-error-handling (&body body)
+  "Executes the body forms with Python error handling.
+Any errors that occur during the execution of the body forms will be caught and handled appropriately."
   `(call-with-python-error-handling (lambda () ,@body)))
 
 (defun pyobject-typep (pyobject pytype)
+  "Checks if the given PyObject is of the specified PyType."
   (pytype-subtypep (pyobject-pytype pyobject) pytype))
 
 (defun pytuple (&rest pyobjects)
@@ -24,7 +33,8 @@
     tuple))
 
 (defun string-from-pyobject (pyobject)
-  "Returns a Lisp string with the same content as the supplied PyObject."
+  "Returns a Lisp string with the same content as the supplied PyObject.
+If the PyObject is not a PyUnicode object, an error will be raised."
   (declare (pyobject pyobject))
   (unless (pyobject-typep pyobject *unicode-pyobject*)
     (error "Not a PyUnicode object: ~A." pyobject))
@@ -62,7 +72,7 @@
           pyobject)))))
 
 (defun pyprint (pyobject &optional (stream t))
-  "Print the string representation of the supplied PyObject."
+  "Prints the string representation of the supplied PyObject to the specified stream."
   (let ((repr (with-python-error-handling (pyobject-repr pyobject))))
     (princ (string-from-pyobject repr) stream))
   pyobject)
@@ -70,6 +80,9 @@
 ;;; Calling Python Functions
 
 (defun pycall (pycallable &rest pyobjects)
+  "Calls the specified Python function with the given arguments.
+The arguments should be PyObjects.
+Returns the result of the function call as a PyObject."
   (let* ((argc (length pyobjects))
          (argv (make-array argc :element-type '(unsigned-byte 64))))
     (declare (dynamic-extent argv))
@@ -82,11 +95,8 @@
 #+(or)
 (define-compiler-macro pycall
     (&whole whole n-positional-arguments &rest arguments &environment environment)
-  "(pycall 2 f a b :c c \"d\" d e 42)
-=> (let ((#:f f) (#:a a) (#:b b) (#:c c) (#:d d) (#:e e))
-     (funcall (optimized-pycaller 5)
-              #:f #:a #:b #:c #:d 42
-              (pycall-kwnames :c \"d\" #:e)))"
+  "A compiler macro for optimizing pycall.
+Expands into a more efficient form for calling Python functions with positional and keyword arguments."
   (unless (integerp n-positional-arguments)
     (return-from pycall whole))
   (let* ((constantness
@@ -121,6 +131,8 @@
 #+(or)
 (let ((pycallers (make-hash-table)))
   (defun optimized-pycaller (n-arguments)
+    "A helper function for optimizing pycall.
+Generates an optimized caller function for a given number of arguments."
     (values
      (alexandria:ensure-gethash
       n-arguments
@@ -143,10 +155,13 @@
 
 #+(or)
 (defun argument-symbol (n)
-  (intern (format nil"ARG~D" n) #.*package*))
+  "Generates a symbol for the nth argument in an optimized pycaller function."
+  (intern (format nil "ARG~D" n) #.*package*))
 
 #+(or)
 (define-compiler-macro optimized-pycaller (&whole whole n-arguments)
+  "A compiler macro for optimizing optimized-pycaller.
+Expands into a load-time-value form to ensure that the optimized caller function is only compiled once."
   (if (constantp n-arguments)
       `(load-time-value
         (locally (declare (notinline optimized-pycaller))
